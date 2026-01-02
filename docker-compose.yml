@@ -186,8 +186,6 @@ services:
       - wp
     command: [ "/bin/sh", "/usr/local/bin/install-wordpress.sh" ]
     restart: "no"
-    profiles:
-      - tools
 
 networks:
   wp:
