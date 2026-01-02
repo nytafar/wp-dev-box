@@ -144,6 +144,8 @@ services:
       WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wpuser}
       WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-changeme}
       WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wpdb}
+      AUTO_INSTALL_PLUGINS: ${AUTO_INSTALL_PLUGINS:-true}
+      AUTO_ACTIVATE_PLUGINS: ${AUTO_ACTIVATE_PLUGINS:-true}
       WORDPRESS_PLUGINS: ${WORDPRESS_PLUGINS:-}
     depends_on:
       wordpress:
@@ -152,8 +154,6 @@ services:
       - wp
     command: [ "/bin/sh", "/usr/local/bin/install-plugins.sh" ]
     restart: "no"
-    profiles:
-      - tools
 
   wordpress-installer:
     image: wordpress:cli

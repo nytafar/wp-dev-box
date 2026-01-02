@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.2 - Plugin Auto-Install & Auto-Activate
+
+### Added
+- `AUTO_INSTALL_PLUGINS` environment variable (defaults to `true`)
+  - Set to `false` to skip automatic plugin installation
+- `AUTO_ACTIVATE_PLUGINS` environment variable (defaults to `true`)
+  - Set to `false` to install plugins without activating them
+- Automatic plugin installation on `docker compose up -d` (removed from tools profile)
+
+### Fixed
+- Plugin installer script compatibility with Alpine Linux (sh instead of bash)
+- Plugin installer now runs automatically on stack startup
+- Plugins specified in `WORDPRESS_PLUGINS` now install and activate correctly
+
+### Changed
+- Plugin-installer service runs by default but respects AUTO_INSTALL_PLUGINS flag
+- Improved plugin installation logging and error handling
+
 ## [1.0.1] - 2026-01-02
 
 ### Added
