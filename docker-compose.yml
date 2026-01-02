@@ -1,0 +1,200 @@
+services:
+  # Bootstrap missing config files as failsafe (runs once, then exits)
+  init:
+    image: alpine:3.20
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-init
+    volumes:
+      - ./:/app-host
+      - ./docker/bootstrap.sh:/usr/local/bin/bootstrap.sh:ro
+    command: [ "/bin/sh", "/usr/local/bin/bootstrap.sh" ]
+    restart: "no"
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-nginx
+    depends_on:
+      wordpress:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      # In production, you'll terminate TLS on 443 here
+      # - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - wp_core:/var/www/html:ro
+      - ./wp-content:/var/www/html/wp-content:ro
+    networks:
+      - wp
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  wordpress:
+    image: wordpress:php8.2-fpm
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-wordpress
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:-db:3306}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wpuser}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-changeme}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wpdb}
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-256M}
+    volumes:
+      - wp_core:/var/www/html
+      - ./wp-content:/var/www/html/wp-content
+      - ./wp-config.php:/var/www/html/wp-config.php
+      - ./php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - wp
+    healthcheck:
+      test: [ "CMD-SHELL", "pidof php-fpm || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: mariadb:10.11
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-db
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-wpdb}
+      MARIADB_USER: ${MARIADB_USER:-wpuser}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-changeme}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-changeme}
+    command: [ "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci" ]
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - wp
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-redis
+    command: [ "redis-server", "--appendonly", "yes" ]
+    volumes:
+      - redis_data:/data
+    networks:
+      - wp
+
+  backup:
+    image: alpine:3.20
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-backup
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    volumes:
+      - db_data:/var/lib/mysql:ro
+      - ./wp-content:/data/wp-content:ro
+      - backups:/backups
+      - ./backup/run.sh:/backup/run.sh:ro
+      - ./backup/crontab:/etc/crontabs/root:ro
+    environment:
+      DB_HOST: db
+      DB_NAME: ${MARIADB_DATABASE:-wpdb}
+      DB_USER: ${MARIADB_USER:-wpuser}
+      DB_PASSWORD: ${MARIADB_PASSWORD:-changeme}
+      RETENTION_DAYS: ${RETENTION_DAYS:-14}
+    command: [ "/bin/sh", "-c", "apk add --no-cache mariadb-client tzdata > /dev/null && crond -f -l 8" ]
+    networks:
+      - wp
+
+  cli:
+    image: wordpress:cli
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-cli
+    user: "33:33"
+    volumes:
+      - wp_core:/var/www/html
+      - ./wp-content:/var/www/html/wp-content
+      - ./wp-config.php:/var/www/html/wp-config.php
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:-db:3306}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wpuser}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-changeme}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wpdb}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - wp
+
+  plugin-installer:
+    image: wordpress:cli
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-plugin-installer
+    user: "33:33"
+    volumes:
+      - wp_core:/var/www/html
+      - ./wp-content:/var/www/html/wp-content
+      - ./wp-config.php:/var/www/html/wp-config.php
+      - ./docker/install-plugins.sh:/usr/local/bin/install-plugins.sh:ro
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:-db:3306}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wpuser}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-changeme}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wpdb}
+      WORDPRESS_PLUGINS: ${WORDPRESS_PLUGINS:-}
+    depends_on:
+      wordpress:
+        condition: service_healthy
+    networks:
+      - wp
+    command: [ "/bin/sh", "/usr/local/bin/install-plugins.sh" ]
+    restart: "no"
+    profiles:
+      - tools
+
+  wordpress-installer:
+    image: wordpress:cli
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-wordpress-installer
+    user: "33:33"
+    volumes:
+      - wp_core:/var/www/html
+      - ./wp-content:/var/www/html/wp-content
+      - ./wp-config.php:/var/www/html/wp-config.php:ro
+      - ./docker/install-wordpress.sh:/usr/local/bin/install-wordpress.sh:ro
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:-db:3306}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:-wpuser}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:-changeme}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:-wpdb}
+      AUTO_INSTALL_WORDPRESS: ${AUTO_INSTALL_WORDPRESS:-true}
+      WORDPRESS_SITE_URL: ${WORDPRESS_SITE_URL:-http://localhost}
+      WORDPRESS_SITE_TITLE: ${WORDPRESS_SITE_TITLE:-My WordPress Site}
+      WORDPRESS_ADMIN_USER: ${WORDPRESS_ADMIN_USER:-admin}
+      WORDPRESS_ADMIN_PASSWORD: ${WORDPRESS_ADMIN_PASSWORD:-}
+      WORDPRESS_ADMIN_EMAIL: ${WORDPRESS_ADMIN_EMAIL:-admin@example.com}
+      WORDPRESS_LOCALE: ${WORDPRESS_LOCALE:-en_US}
+      WORDPRESS_SEARCH_ENGINE_VISIBILITY: ${WORDPRESS_SEARCH_ENGINE_VISIBILITY:-0}
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      wordpress:
+        condition: service_healthy
+    networks:
+      - wp
+    command: [ "/bin/sh", "/usr/local/bin/install-wordpress.sh" ]
+    restart: "no"
+    profiles:
+      - tools
+
+networks:
+  wp:
+    driver: bridge
+
+volumes:
+  db_data:
+  wp_core:
+  redis_data:
+  backups:

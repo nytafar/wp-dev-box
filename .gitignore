@@ -1,0 +1,31 @@
+# Docker
+.docker/
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# WordPress content (user data)
+wp-content/*
+!wp-content/index.php
+!wp-content/plugins/.gitkeep
+!wp-content/themes/.gitkeep
+!wp-content/uploads/.gitkeep
+
+# WordPress configuration (contains secrets)
+wp-config.php
+!wp-config-template.php
+
+# Backup files (stored in Docker volume)
+backups/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,2 @@
+# Run at 03:17 every day
+17 3 * * * /bin/sh /backup/run.sh >/proc/1/fd/1 2>&1
