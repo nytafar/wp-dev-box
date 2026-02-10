@@ -98,7 +98,8 @@ services:
     volumes:
       - db_data:/var/lib/mysql:ro
       - ./wp-content:/data/wp-content:ro
-      - backups:/backups
+      - ./backups:/backups
+      - backups:/backups-docker-volume
       - ./backup/run.sh:/backup/run.sh:ro
       - ./backup/crontab:/etc/crontabs/root:ro
     environment:
